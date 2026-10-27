@@ -468,14 +468,10 @@ async function loadSdk() {
         createClient: mod.createClient,
         studionet: chains.studionet,
       }))
-      .catch((_) => ({
-        createClient: () => ({
-          readContract: async () => "0",
-          writeContract: async () => "0x" + "00".repeat(32),
-          waitForTransactionReceipt: async () => ({ status: 7, statusName: "FINALIZED" }),
-        }),
-        studionet: { id: CHAIN_ID, name: "StudioNet", rpcUrls: { default: { http: [RPC_ENDPOINT] } } },
-      }));
+      .catch((err) => {
+        sdkPromise = null;
+        throw new Error("Failed to load GenLayer SDK: " + (err?.message || err));
+      });
   }
   return await sdkPromise;
 }
@@ -534,37 +530,24 @@ export async function updateClient() {
   }
 
   if (typeof window !== "undefined") {
-    try {
-      const { createClient, studionet } = await loadSdk();
-      state.readClient = createClient({
+    const { createClient, studionet } = await loadSdk();
+    state.readClient = createClient({
+      chain: studionet,
+      account: null,
+    });
+    if (state.walletAddress && /^0x[0-9a-fA-F]{40}$/.test(state.walletAddress) && state.provider) {
+      state.client = wrapClient(createClient({
         chain: studionet,
-        account: null,
-      });
-      if (state.walletAddress && /^0x[0-9a-fA-F]{40}$/.test(state.walletAddress) && state.provider) {
-        state.client = wrapClient(createClient({
-          chain: studionet,
-          provider: state.provider,
-        }));
-      } else {
-        state.client = wrapClient(createClient({
-          chain: studionet,
-        }));
-      }
-      return state.client;
-    } catch (_) {}
+        provider: state.provider,
+      }));
+    } else {
+      state.client = wrapClient(createClient({
+        chain: studionet,
+      }));
+    }
+    return state.client;
   }
 
-  if (!state.readClient) {
-    state.readClient = {
-      readContract: async () => "0",
-    };
-  }
-  if (!state.client) {
-    state.client = {
-      writeContract: async () => "0x" + "00".repeat(32),
-      waitForTransactionReceipt: async () => ({ status: 7, statusName: "FINALIZED" }),
-    };
-  }
   return state.client;
 }
 export async function executeWriteFlow(
